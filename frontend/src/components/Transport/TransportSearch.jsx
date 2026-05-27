@@ -15,8 +15,9 @@ const TransportSearch = ({ onLocationSelect }) => {
     setLoading(true);
     try {
       // Using OpenStreetMap Nominatim API (Free)
+      // Added region hints to prioritize local villages near Tadikalapudi/Eluru
       const response = await axios.get(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=in&limit=5`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ' Eluru Andhra Pradesh')}&countrycodes=in&limit=5`
       );
       setResults(response.data);
     } catch (error) {

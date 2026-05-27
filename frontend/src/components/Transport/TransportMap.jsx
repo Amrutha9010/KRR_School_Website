@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { motion } from 'framer-motion';
@@ -67,17 +67,16 @@ const TransportMap = ({
     >
       <MapContainer 
         center={center} 
-        zoom={13} 
+        zoom={12} 
         style={{ height: '100%', width: '100%' }}
         scrollWheelZoom={true}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          // For a dark theme, you could use: url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
         
-        <ChangeView center={center} zoom={13} />
+        <ChangeView center={center} zoom={12} />
 
         {/* School Marker */}
         <Marker position={[schoolLocation.lat, schoolLocation.lng]} icon={schoolIcon}>
@@ -114,11 +113,14 @@ const TransportMap = ({
           <Marker 
             key={point._id} 
             position={[point.location.lat, point.location.lng]}
-            // icon={stopIcon}
           >
+            <Tooltip permanent direction="top" offset={[0, -10]} className="bg-slate-900 border-none text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg">
+              {point.name}
+            </Tooltip>
             <Popup>
-              <div className="font-bold">{point.name}</div>
-              <p className="text-xs">Pickup Stop</p>
+              <div className="font-bold text-blue-600">{point.name}</div>
+              <p className="text-xs">Route: {point.route?.routeName}</p>
+              <p className="text-[10px] text-gray-500">Official KRR Pickup Point</p>
             </Popup>
           </Marker>
         ))}

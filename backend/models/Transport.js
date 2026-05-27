@@ -25,6 +25,7 @@ const RouteSchema = new mongoose.Schema({
     pickup: { type: String, required: true },
     drop: { type: String, required: true }
   },
+  fee: { type: Number, required: true },
   bus: { type: mongoose.Schema.Types.ObjectId, ref: 'Bus' }
 }, { timestamps: true });
 
@@ -39,6 +40,11 @@ const PickupPointSchema = new mongoose.Schema({
 
 const TransportAssignmentSchema = new mongoose.Schema({
   studentName: { type: String, required: true },
+  studentId: { type: String, required: true, unique: true },
+  studentRollNo: { type: String },
+  studentClass: { type: String, required: true },
+  studentPhone: { type: String, required: true },
+  address: { type: String },
   location: {
     name: { type: String },
     lat: { type: Number, required: true },
@@ -47,12 +53,27 @@ const TransportAssignmentSchema = new mongoose.Schema({
   pickupPoint: { type: mongoose.Schema.Types.ObjectId, ref: 'PickupPoint' },
   route: { type: mongoose.Schema.Types.ObjectId, ref: 'Route' },
   bus: { type: mongoose.Schema.Types.ObjectId, ref: 'Bus' },
-  status: { type: String, enum: ['pending', 'active', 'cancelled'], default: 'active' }
+  fee: { type: Number },
+  paidAmount: { type: Number, default: 0 },
+  dueAmount: { type: Number, default: 0 },
+  paymentStatus: { type: String, enum: ['pending', 'partial', 'paid'], default: 'pending' },
+  assignmentStatus: { type: String, enum: ['pending', 'active', 'cancelled'], default: 'pending' }
+}, { timestamps: true });
+
+const TransportPaymentSchema = new mongoose.Schema({
+  studentId: { type: String, required: true },
+  assignment: { type: mongoose.Schema.Types.ObjectId, ref: 'TransportAssignment' },
+  amount: { type: Number, required: true },
+  razorpayOrderId: { type: String, required: true },
+  razorpayPaymentId: { type: String },
+  razorpaySignature: { type: String },
+  status: { type: String, enum: ['created', 'captured', 'failed'], default: 'created' }
 }, { timestamps: true });
 
 const Bus = mongoose.model('Bus', BusSchema);
 const Route = mongoose.model('Route', RouteSchema);
 const PickupPoint = mongoose.model('PickupPoint', PickupPointSchema);
 const TransportAssignment = mongoose.model('TransportAssignment', TransportAssignmentSchema);
+const TransportPayment = mongoose.model('TransportPayment', TransportPaymentSchema);
 
-module.exports = { Bus, Route, PickupPoint, TransportAssignment };
+module.exports = { Bus, Route, PickupPoint, TransportAssignment, TransportPayment };
