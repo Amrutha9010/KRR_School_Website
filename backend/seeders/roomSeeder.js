@@ -13,11 +13,7 @@ const seedRooms = async () => {
     dns.setServers(['8.8.8.8', '8.8.4.4']);
 
     await mongoose.connect(process.env.MONGO_URI);
-    console.log('Connected to MongoDB for seeding...');
-
-    // Clear existing rooms
-    await HostelRoom.deleteMany();
-    console.log('Cleared existing rooms.');
+    console.log('Connected to MongoDB for hostel room seeding...');
 
     const rooms = [];
 
@@ -69,14 +65,32 @@ const seedRooms = async () => {
       });
     }
 
-    await HostelRoom.insertMany(rooms);
-    console.log(`Successfully seeded ${rooms.length} hostel rooms.`);
+    // Insert only new rooms
+    let newRoomsCount = 0;
+    for (const room of rooms) {
+      const existingRoom = await HostelRoom.findOne({ roomNumber: room.roomNumber });
+      if (!existingRoom) {
+        await HostelRoom.create(room);
+        newRoomsCount++;
+      }
+    }
+
+    console.log(`✅ Hostel rooms seeded: ${newRoomsCount} new rooms (${newRoomsCount === 0 ? 'all rooms already existed' : ''}`);
     
-    process.exit();
+    await mongoose.disconnect();
+    return { success: true, newRooms: newRoomsCount };
   } catch (err) {
-    console.error(`Seeding error: ${err.message}`);
-    process.exit(1);
+    console.error(`❌ Hostel room seeding error: ${err.message}`);
+    if (mongoose.connection.readyState === 1) await mongoose.disconnect();
+    throw err;
   }
 };
 
-seedRooms();
+// If running directly, execute the seed
+if (require.main === module) {
+  seedRooms()
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
+}
+
+module.exports = seedRooms;
