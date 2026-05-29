@@ -201,24 +201,10 @@ exports.verifyHostelPayment = async (req, res) => {
     }
 
     // ===============================
-    // UPDATE APPLICATION
+    // GET APPLICATION (but don't update yet)
     // ===============================
 
-    const application =
-      await HostelApplication.findByIdAndUpdate(
-
-        payment.applicationId,
-
-        {
-          paymentStatus: 'Completed',
-          applicationStatus: 'Approved'
-        },
-
-        {
-          returnDocument: 'after'
-        }
-      );
-
+    const application = await HostelApplication.findById(payment.applicationId);
     if (!application) {
       return res.status(404).json({
         success: false,
@@ -227,7 +213,7 @@ exports.verifyHostelPayment = async (req, res) => {
     }
 
     // ===============================
-    // CHECK DUPLICATE STUDENT
+    // CHECK IF ALREADY COMPLETED
     // ===============================
 
     const existingStudent =
@@ -236,127 +222,29 @@ exports.verifyHostelPayment = async (req, res) => {
       });
 
     if (existingStudent) {
-
       return res.status(200).json({
         success: true,
-        message: 'Payment already verified',
-
+        message: 'Payment already verified and receipt generated',
         data: {
           paymentId: razorpay_payment_id,
-          roomNumber:
-            existingStudent.hostelDetails.roomNumber,
-
-          receiptUrl:
-            `http://localhost:5000/api/hostel-payments/receipt/${razorpay_payment_id}`
+          roomNumber: existingStudent.hostelDetails.roomNumber,
+          receiptUrl: `http://localhost:5000/api/hostel-payments/receipt/${razorpay_payment_id}`
         }
       });
     }
 
     // ===============================
-    // FIND ROOM
-    // ===============================
-
-    const room = await HostelRoom.findOne({
-
-      hostelType: application.hostelType,
-
-      roomType: application.roomType,
-
-      availableBeds: { $gt: 0 }
-    });
-
-    let allocatedRoom = 'Pending';
-
-    // ===============================
-    // ROOM ALLOCATION
-    // ===============================
-
-    if (room) {
-
-      allocatedRoom = room.roomNumber;
-
-      const student =
-        await HostelStudent.create({
-
-          studentId: application.studentId,
-
-          studentName: application.studentName,
-
-          gender: application.gender,
-
-          dateOfBirth: application.dateOfBirth,
-
-          studentClass: application.studentClass,
-
-          bloodGroup: application.bloodGroup,
-
-          aadhaarNumber: application.aadhaarNumber,
-
-          parentDetails: {
-
-            fatherName: application.fatherName,
-
-            motherName: application.motherName,
-
-            mobile: application.mobileNumber,
-
-            email: application.email,
-
-            address: application.address
-          },
-
-          hostelDetails: {
-
-            room: room._id,
-
-            roomNumber: room.roomNumber,
-
-            hostelType: room.hostelType,
-
-            roomType: room.roomType,
-
-            admissionDate: new Date()
-          }
-        });
-
-      // UPDATE ROOM
-
-      room.studentsAssigned.push(student._id);
-
-      room.occupiedBeds += 1;
-
-      room.availableBeds =
-        room.totalBeds -
-        room.occupiedBeds;
-
-      await room.save();
-    }
-
-    // ===============================
-    // SUCCESS RESPONSE
+    // SUCCESS RESPONSE (payment verified, waiting for receipt download)
     // ===============================
 
     return res.status(200).json({
-
       success: true,
-
-      message:
-        'Payment verified successfully',
-
+      message: 'Payment verified successfully. Please download the receipt to complete the process.',
       data: {
-
         paymentId: razorpay_payment_id,
-
         studentName: application.studentName,
-
         studentId: application.studentId,
-
-        roomNumber: allocatedRoom,
-
-        paymentStatus: 'Completed',
-
-        receiptUrl:
-          `http://localhost:5000/api/hostel-payments/receipt/${razorpay_payment_id}`
+        receiptUrl: `http://localhost:5000/api/hostel-payments/receipt/${razorpay_payment_id}`
       }
     });
 
@@ -368,9 +256,7 @@ exports.verifyHostelPayment = async (req, res) => {
     );
 
     return res.status(500).json({
-
       success: false,
-
       error: err.message
     });
   }
@@ -417,241 +303,319 @@ exports.getPaymentHistory = async (req, res) => {
 // ======================================================
 
 exports.getAdmissionReceipt = async (req, res) => {
-
   try {
-
-    const payment =
-      await HostelPayment.findOne({
-
-        paymentId: req.params.paymentId
-
-      }).populate('applicationId');
+    const payment = await HostelPayment.findOne({
+      paymentId: req.params.paymentId
+    }).populate('applicationId');
 
     if (!payment) {
-
       return res.status(404).json({
-
         success: false,
-
         error: 'Receipt not found'
       });
     }
 
+    // Check if receipt was already generated and process completed
+    if (payment.receiptGenerated && payment.status === 'Completed') {
+      // Just generate and send the PDF again without reprocessing
+      return generateAndSendPDF(payment, res);
+    }
+
     // ===============================
-    // PDF HEADERS
+    // 1. FIRST GENERATE PDF INTO A BUFFER TO VERIFY SUCCESS
     // ===============================
+    const pdfBuffer = await generatePDFBuffer(payment);
 
-    res.setHeader(
-      'Content-Type',
-      'application/pdf'
-    );
+    // ===============================
+    // 2. NOW PERFORM THE FINAL STEPS (since PDF generation was successful)
+    // ===============================
+    const application = payment.applicationId;
 
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename=Hostel_Receipt_${payment.paymentId}.pdf`
-    );
+    // Check if student already exists to avoid duplicates
+    let existingStudent = await HostelStudent.findOne({
+      studentId: application.studentId
+    });
 
-    const doc =
-      new PDFDocument({
-        margin: 40,
-        size: 'A4'
+    let allocatedRoom = 'Pending';
+
+    if (!existingStudent) {
+      // Find and allocate room
+      const room = await HostelRoom.findOne({
+        hostelType: application.hostelType,
+        roomType: application.roomType,
+        availableBeds: { $gt: 0 }
       });
 
-    doc.pipe(res);
+      if (room) {
+        allocatedRoom = room.roomNumber;
+
+        // Create HostelStudent
+        existingStudent = await HostelStudent.create({
+          studentId: application.studentId,
+          studentName: application.studentName,
+          gender: application.gender,
+          dateOfBirth: application.dateOfBirth,
+          studentClass: application.studentClass,
+          bloodGroup: application.bloodGroup,
+          aadhaarNumber: application.aadhaarNumber,
+          parentDetails: {
+            fatherName: application.fatherName,
+            motherName: application.motherName,
+            mobile: application.mobileNumber,
+            email: application.email,
+            address: application.address
+          },
+          hostelDetails: {
+            room: room._id,
+            roomNumber: room.roomNumber,
+            hostelType: room.hostelType,
+            roomType: room.roomType,
+            admissionDate: new Date()
+          }
+        });
+
+        // Update room
+        room.studentsAssigned.push(existingStudent._id);
+        room.occupiedBeds += 1;
+        room.availableBeds = room.totalBeds - room.occupiedBeds;
+        await room.save();
+      }
+
+      // Update application status
+      await HostelApplication.findByIdAndUpdate(
+        application._id,
+        {
+          paymentStatus: 'Completed',
+          applicationStatus: 'Approved',
+          roomNumber: allocatedRoom
+        }
+      );
+    }
+
+    // Update payment status to Completed and mark receipt as generated
+    await HostelPayment.findByIdAndUpdate(
+      payment._id,
+      {
+        status: 'Completed',
+        receiptGenerated: true,
+        receiptDownloadedAt: new Date()
+      }
+    );
+
+    // ===============================
+    // 3. SEND THE GENERATED PDF
+    // ===============================
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=Hostel_Receipt_${payment.paymentId}.pdf`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+
+  } catch (err) {
+    console.error('PDF RECEIPT ERROR:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+// Helper function to generate PDF buffer
+function generatePDFBuffer(payment) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const doc = new PDFDocument({
+      margin: 40,
+      size: 'A4'
+    });
+
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
 
     // ===============================
     // HEADER
     // ===============================
+    doc.rect(0, 0, 700, 100).fill('#0f172a');
 
-    doc
-      .rect(0, 0, 700, 100)
-      .fill('#0f172a');
-
-    doc
-      .fillColor('#ffffff')
+    doc.fillColor('#ffffff')
       .fontSize(26)
       .font('Helvetica-Bold')
-      .text(
-        'KRR BRIGHTMINDS SCHOOL',
-        50,
-        35
-      );
+      .text('KRR BRIGHTMINDS SCHOOL', 50, 35);
 
-    doc
-      .fontSize(12)
+    doc.fontSize(12)
       .font('Helvetica')
-      .text(
-        'HOSTEL PAYMENT RECEIPT',
-        50,
-        70
-      );
+      .text('HOSTEL PAYMENT RECEIPT', 50, 70);
 
     // ===============================
     // DETAILS
     // ===============================
-
     let y = 140;
-
     doc.fillColor('#000000');
 
     const details = [
-
       ['Student Name', payment.studentName],
-
-      ['Student ID',
-        payment.applicationId.studentId
-      ],
-
-      ['Hostel Type',
-        payment.applicationId.hostelType
-      ],
-
-      ['Room Type',
-        payment.applicationId.roomType
-      ],
-
-      ['Payment ID',
-        payment.paymentId
-      ],
-
-      ['Payment Status',
-        payment.status
-      ],
-
-      ['Date',
-        new Date(payment.paidAt)
-          .toLocaleDateString('en-IN')
-      ]
+      ['Student ID', payment.applicationId.studentId],
+      ['Hostel Type', payment.applicationId.hostelType],
+      ['Room Type', payment.applicationId.roomType],
+      ['Payment ID', payment.paymentId],
+      ['Payment Status', payment.status],
+      ['Date', new Date(payment.paidAt).toLocaleDateString('en-IN')]
     ];
 
     details.forEach(item => {
-
-      doc
-        .font('Helvetica-Bold')
+      doc.font('Helvetica-Bold')
         .fontSize(12)
         .text(item[0], 50, y);
-
-      doc
-        .font('Helvetica')
+      doc.font('Helvetica')
         .text(': ' + item[1], 220, y);
-
       y += 28;
     });
 
     // ===============================
     // FEES
     // ===============================
-
     y += 20;
-
-    doc
-      .font('Helvetica-Bold')
+    doc.font('Helvetica-Bold')
       .fontSize(16)
       .text('Fee Breakdown', 50, y);
-
     y += 40;
 
     const fees = [
-
-      [
-        'Hostel Fee',
-        payment.feeBreakdown.hostelFee
-      ],
-
-      [
-        'Admission Fee',
-        payment.feeBreakdown.admissionFee
-      ],
-
-      [
-        'Security Deposit',
-        payment.feeBreakdown.securityDeposit
-      ]
+      ['Hostel Fee', payment.feeBreakdown.hostelFee],
+      ['Admission Fee', payment.feeBreakdown.admissionFee],
+      ['Security Deposit', payment.feeBreakdown.securityDeposit]
     ];
 
     fees.forEach(fee => {
-
-      doc
-        .font('Helvetica')
+      doc.font('Helvetica')
         .fontSize(12)
         .text(fee[0], 60, y);
-
-      doc
-        .text(
-          `₹ ${fee[1].toLocaleString('en-IN')}`,
-          420,
-          y
-        );
-
+      doc.text(`₹ ${fee[1].toLocaleString('en-IN')}`, 420, y);
       y += 28;
     });
 
     // ===============================
     // TOTAL
     // ===============================
-
     y += 20;
-
-    doc
-      .moveTo(50, y)
-      .lineTo(550, y)
-      .stroke();
-
+    doc.moveTo(50, y).lineTo(550, y).stroke();
     y += 20;
-
-    doc
-      .font('Helvetica-Bold')
+    doc.font('Helvetica-Bold')
       .fontSize(16)
-      .text(
-        'TOTAL PAID',
-        60,
-        y
-      );
-
-    doc
-      .text(
-        `₹ ${payment.amount.toLocaleString('en-IN')}`,
-        400,
-        y
-      );
+      .text('TOTAL PAID', 60, y);
+    doc.text(`₹ ${payment.amount.toLocaleString('en-IN')}`, 400, y);
 
     // ===============================
     // FOOTER
     // ===============================
-
     y += 80;
-
-    doc
-      .font('Helvetica')
+    doc.font('Helvetica')
       .fontSize(10)
       .fillColor('gray')
-      .text(
-        'This is a computer generated receipt.',
-        50,
-        y
-      );
-
-    doc
-      .text(
-        'KRR BrightMinds School | Hostel Department',
-        50,
-        y + 18
-      );
+      .text('This is a computer generated receipt.', 50, y);
+    doc.text('KRR BrightMinds School | Hostel Department', 50, y + 18);
 
     doc.end();
+  });
+}
 
-  } catch (err) {
+// Helper function to just send PDF when receipt is already generated
+function generateAndSendPDF(payment, res) {
+  return new Promise((resolve, reject) => {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=Hostel_Receipt_${payment.paymentId}.pdf`);
 
-    console.error(
-      'PDF RECEIPT ERROR:',
-      err
-    );
-
-    return res.status(500).json({
-
-      success: false,
-
-      error: err.message
+    const doc = new PDFDocument({
+      margin: 40,
+      size: 'A4'
     });
-  }
-};
+
+    doc.pipe(res);
+
+    // ===============================
+    // HEADER
+    // ===============================
+    doc.rect(0, 0, 700, 100).fill('#0f172a');
+
+    doc.fillColor('#ffffff')
+      .fontSize(26)
+      .font('Helvetica-Bold')
+      .text('KRR BRIGHTMINDS SCHOOL', 50, 35);
+
+    doc.fontSize(12)
+      .font('Helvetica')
+      .text('HOSTEL PAYMENT RECEIPT', 50, 70);
+
+    // ===============================
+    // DETAILS
+    // ===============================
+    let y = 140;
+    doc.fillColor('#000000');
+
+    const details = [
+      ['Student Name', payment.studentName],
+      ['Student ID', payment.applicationId.studentId],
+      ['Hostel Type', payment.applicationId.hostelType],
+      ['Room Type', payment.applicationId.roomType],
+      ['Payment ID', payment.paymentId],
+      ['Payment Status', payment.status],
+      ['Date', new Date(payment.paidAt).toLocaleDateString('en-IN')]
+    ];
+
+    details.forEach(item => {
+      doc.font('Helvetica-Bold')
+        .fontSize(12)
+        .text(item[0], 50, y);
+      doc.font('Helvetica')
+        .text(': ' + item[1], 220, y);
+      y += 28;
+    });
+
+    // ===============================
+    // FEES
+    // ===============================
+    y += 20;
+    doc.font('Helvetica-Bold')
+      .fontSize(16)
+      .text('Fee Breakdown', 50, y);
+    y += 40;
+
+    const fees = [
+      ['Hostel Fee', payment.feeBreakdown.hostelFee],
+      ['Admission Fee', payment.feeBreakdown.admissionFee],
+      ['Security Deposit', payment.feeBreakdown.securityDeposit]
+    ];
+
+    fees.forEach(fee => {
+      doc.font('Helvetica')
+        .fontSize(12)
+        .text(fee[0], 60, y);
+      doc.text(`₹ ${fee[1].toLocaleString('en-IN')}`, 420, y);
+      y += 28;
+    });
+
+    // ===============================
+    // TOTAL
+    // ===============================
+    y += 20;
+    doc.moveTo(50, y).lineTo(550, y).stroke();
+    y += 20;
+    doc.font('Helvetica-Bold')
+      .fontSize(16)
+      .text('TOTAL PAID', 60, y);
+    doc.text(`₹ ${payment.amount.toLocaleString('en-IN')}`, 400, y);
+
+    // ===============================
+    // FOOTER
+    // ===============================
+    y += 80;
+    doc.font('Helvetica')
+      .fontSize(10)
+      .fillColor('gray')
+      .text('This is a computer generated receipt.', 50, y);
+    doc.text('KRR BrightMinds School | Hostel Department', 50, y + 18);
+
+    doc.end();
+    resolve();
+  });
+}

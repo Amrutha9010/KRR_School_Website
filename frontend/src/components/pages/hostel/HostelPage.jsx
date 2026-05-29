@@ -1,6 +1,6 @@
-import React from "react";
 import { Link } from "react-router-dom";
-import { FaInstagram, FaYoutube } from "react-icons/fa";
+import React, { useState, useEffect } from "react";
+
 import {
   ShieldCheck,
   BedDouble,
@@ -30,6 +30,37 @@ import {
 } from "lucide-react";
 
 const HostelPage = () => {
+  const [availability, setAvailability] = useState({
+    boys: { ac: 0, nonAc: 0 },
+    girls: { ac: 0, nonAc: 0 },
+  });
+
+  const [loadingAvailability, setLoadingAvailability] = useState(true);
+
+  useEffect(() => {
+    const fetchAvailability = async () => {
+      try {
+        const response = await fetch(
+          "http://localhost:5000/api/hostel/availability",
+        );
+
+        const result = await response.json();
+
+        console.log("Availability API:", result);
+
+        if (result.success) {
+          setAvailability(result.data);
+        }
+      } catch (error) {
+        console.error("Availability fetch error:", error);
+      } finally {
+        setLoadingAvailability(false);
+      }
+    };
+
+    fetchAvailability();
+  }, []);
+
   const whyChooseUs = [
     {
       icon: ShieldCheck,
@@ -87,6 +118,7 @@ const HostelPage = () => {
       ],
       image: "/AC.jpg",
       price: "₹75,000",
+      available: availability.boys.ac,
     },
     {
       title: "Non-AC Hostel Room",
@@ -101,6 +133,7 @@ const HostelPage = () => {
       ],
       image: "/Non-AC.jpg",
       price: "₹55,000",
+      available: availability.boys.nonAc,
     },
   ];
 
@@ -133,11 +166,11 @@ const HostelPage = () => {
 
   const gallery = [
     { url: "/Hostel.jpg", title: "Hostel Building" },
-    { url: '/Non-AC.jpg', title: 'Non-AC Hostel Room' },
+    { url: "/Non-AC.jpg", title: "Non-AC Hostel Room" },
     // { url: 'https://images.unsplash.com/photo-1567168539593-59673ababaae?auto=format&fit=crop&q=80&w=800', title: 'Student Dining' },
     // { url: '/working together.jpg', title: 'Student Activities' },
     // { url: '/sports.png', title: 'Sports Ground' },
-    { url: '/AC.jpg', title: 'AC Hostel Room' },
+    { url: "/AC.jpg", title: "AC Hostel Room" },
   ];
 
   const testimonials = [
@@ -307,14 +340,22 @@ const HostelPage = () => {
                 <p className="text-navy-300 text-sm uppercase tracking-widest mb-1">
                   Boys Hostel Beds
                 </p>
-                <p className="text-2xl font-bold text-gold-400">12 Available</p>
+                <p className="text-2xl font-bold text-gold-400">
+                  {loadingAvailability
+                    ? "Loading..."
+                    : `${availability.boys.ac + availability.boys.nonAc} Available`}
+                </p>
               </div>
               <div className="w-px h-12 bg-navy-700 hidden sm:block"></div>
               <div>
                 <p className="text-navy-300 text-sm uppercase tracking-widest mb-1">
                   Girls Hostel Beds
                 </p>
-                <p className="text-2xl font-bold text-gold-400">08 Available</p>
+                <p className="text-2xl font-bold text-gold-400">
+                  {loadingAvailability
+                    ? "Loading..."
+                    : `${availability.girls.ac + availability.girls.nonAc} Available`}
+                </p>
               </div>
             </div>
           </div>
@@ -362,9 +403,15 @@ const HostelPage = () => {
                       <p className="text-navy-400 text-xs uppercase font-bold tracking-tighter mb-1">
                         Annual Fee
                       </p>
-                      <p className="text-navy-900 font-bold text-lg">
-                        {room.price}/year
-                      </p>
+                      <div>
+                        <p className="text-navy-900 font-bold text-lg">
+                          {room.price}/year
+                        </p>
+
+                        <p className="text-green-600 text-sm font-semibold mt-1">
+                          {room.available} Beds Available
+                        </p>
+                      </div>
                     </div>
                     <Link
                       to="/hostel-apply"

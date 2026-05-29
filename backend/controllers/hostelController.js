@@ -1,5 +1,5 @@
-const HostelRoom = require('../models/HostelRoom');
-const HostelStudent = require('../models/HostelStudent');
+const HostelRoom = require("../models/HostelRoom");
+const HostelStudent = require("../models/HostelStudent");
 
 // @desc    Get all hostel rooms
 // @route   GET /api/hostel/rooms
@@ -11,14 +11,17 @@ exports.getHostelRooms = async (req, res) => {
 
     if (hostelType) query.hostelType = hostelType;
     if (roomType) query.roomType = roomType;
-    if (available === 'true') query.availableBeds = { $gt: 0 };
+    if (available === "true") query.availableBeds = { $gt: 0 };
 
-    const rooms = await HostelRoom.find(query).populate('studentsAssigned', 'studentName studentClass');
+    const rooms = await HostelRoom.find(query).populate(
+      "studentsAssigned",
+      "studentName studentClass",
+    );
 
     res.status(200).json({
       success: true,
       count: rooms.length,
-      data: rooms
+      data: rooms,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -30,54 +33,55 @@ exports.getHostelRooms = async (req, res) => {
 // @access  Public
 exports.getHostelStats = async (req, res) => {
   try {
-    const stats = await HostelRoom.aggregate([
-      {
-        $group: {
-          _id: { hostelType: "$hostelType", roomType: "$roomType" },
-          totalBeds: { $sum: "$totalBeds" },
-          occupiedBeds: { $sum: "$occupiedBeds" },
-          availableBeds: { $sum: "$availableBeds" },
-          roomCount: { $sum: 1 }
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          hostelType: "$_id.hostelType",
-          roomType: "$_id.roomType",
-          totalBeds: 1,
-          occupiedBeds: 1,
-          availableBeds: 1,
-          roomCount: 1
-        }
-      }
-    ]);
 
-    // Format stats for easier frontend consumption
-    const formattedStats = {
-      Boys: { AC: {}, NonAC: {} },
-      Girls: { AC: {}, NonAC: {} }
+    const rooms = await HostelRoom.find();
+
+    const availability = {
+      boys: {
+        ac: 0,
+        nonAc: 0
+      },
+      girls: {
+        ac: 0,
+        nonAc: 0
+      }
     };
 
-    stats.forEach(stat => {
-      const type = stat.roomType === 'AC' ? 'AC' : 'NonAC';
-      formattedStats[stat.hostelType][type] = {
-        total: stat.totalBeds,
-        occupied: stat.occupiedBeds,
-        available: stat.availableBeds,
-        rooms: stat.roomCount
-      };
+    rooms.forEach((room) => {
+
+      if (room.hostelType === 'Boys') {
+
+        if (room.roomType === 'AC') {
+          availability.boys.ac += room.availableBeds;
+        } else {
+          availability.boys.nonAc += room.availableBeds;
+        }
+
+      } else if (room.hostelType === 'Girls') {
+
+        if (room.roomType === 'AC') {
+          availability.girls.ac += room.availableBeds;
+        } else {
+          availability.girls.nonAc += room.availableBeds;
+        }
+      }
+
     });
 
     res.status(200).json({
       success: true,
-      data: formattedStats
+      data: availability
     });
+
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+
   }
 };
-
 // @desc    Assign student to a room
 // @route   POST /api/hostel/assign
 // @access  Private (Admin)
@@ -87,16 +91,20 @@ exports.assignStudentToRoom = async (req, res) => {
 
     const room = await HostelRoom.findById(roomId);
     if (!room) {
-      return res.status(404).json({ success: false, error: 'Room not found' });
+      return res.status(404).json({ success: false, error: "Room not found" });
     }
 
     if (room.availableBeds <= 0) {
-      return res.status(400).json({ success: false, error: 'No beds available in this room' });
+      return res
+        .status(400)
+        .json({ success: false, error: "No beds available in this room" });
     }
 
     const student = await HostelStudent.findById(studentId);
     if (!student) {
-      return res.status(404).json({ success: false, error: 'Student not found' });
+      return res
+        .status(404)
+        .json({ success: false, error: "Student not found" });
     }
 
     // Update Room
@@ -110,14 +118,14 @@ exports.assignStudentToRoom = async (req, res) => {
       roomNumber: room.roomNumber,
       hostelType: room.hostelType,
       roomType: room.roomType,
-      admissionDate: new Date()
+      admissionDate: new Date(),
     };
     await student.save();
 
     res.status(200).json({
       success: true,
       message: `Student ${student.studentName} assigned to room ${room.roomNumber}`,
-      data: room
+      data: room,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

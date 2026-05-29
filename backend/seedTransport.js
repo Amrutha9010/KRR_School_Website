@@ -7,6 +7,9 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 
 const seedData = async () => {
   try {
+    const dns = require('dns');
+    dns.setServers(['8.8.8.8', '8.8.4.4']);
+    
     await mongoose.connect(process.env.MONGO_URI);
     console.log('Connected to MongoDB for massive 17+ route seeding...');
 

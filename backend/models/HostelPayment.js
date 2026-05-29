@@ -27,7 +27,7 @@ const HostelPaymentSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Created', 'Captured', 'Failed'],
+    enum: ['Created', 'Captured', 'Failed', 'Completed'],
     default: 'Created'
   },
   feeBreakdown: {
@@ -35,7 +35,12 @@ const HostelPaymentSchema = new mongoose.Schema({
     admissionFee: Number,
     securityDeposit: Number
   },
-  paidAt: Date
+  paidAt: Date,
+  receiptGenerated: {
+    type: Boolean,
+    default: false
+  },
+  receiptDownloadedAt: Date
 }, {
   timestamps: true
 });
