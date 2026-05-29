@@ -41,7 +41,7 @@ const HostelPage = () => {
     const fetchAvailability = async () => {
       try {
         const response = await fetch(
-          "http://localhost:5000/api/hostel/availability",
+          `${import.meta.env.VITE_API_URL}/api/hostel/availability`,
         );
 
         const result = await response.json();

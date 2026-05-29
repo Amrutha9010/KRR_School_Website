@@ -322,7 +322,7 @@ const AboutUs = () => {
                 <Link to="/apply" className="w-full sm:w-auto px-8 py-4 bg-gold-500 hover:bg-gold-600 text-navy-900 font-bold rounded-xl shadow-lg shadow-gold-500/20 text-center transition-all hover:-translate-y-1">
                   Apply for Admission
                 </Link>
-                <a href="/#contact" className="w-full sm:w-auto px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl border border-white/20 backdrop-blur-sm text-center transition-all hover:-translate-y-1">
+                <a href="/contact" className="w-full sm:w-auto px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl border border-white/20 backdrop-blur-sm text-center transition-all hover:-translate-y-1">
                   Contact Us
                 </a>
               </div>

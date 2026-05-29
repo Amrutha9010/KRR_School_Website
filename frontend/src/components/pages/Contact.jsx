@@ -512,9 +512,9 @@ const Contact = () => {
                 >
                   Apply for Admission
                 </Link>
-                <button className="w-full sm:w-auto px-10 py-5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl border border-white/20 backdrop-blur-sm transition-all hover:-translate-y-1">
+                {/* <button className="w-full sm:w-auto px-10 py-5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl border border-white/20 backdrop-blur-sm transition-all hover:-translate-y-1">
                   Schedule Campus Visit
-                </button>
+                </button> */}
               </div>
             </div>
           </div>
